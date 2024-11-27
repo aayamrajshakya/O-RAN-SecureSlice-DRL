@@ -1,6 +1,7 @@
 from DQN_agentemu import DQN, DQN_QNetwork, run_dqn
 from DDQN_agentemu import DDQN, DDQN_QNetwork, run_ddqn
 from Dueling_DQN_agentemu import DQN_Dueling, Dueling_QNetwork, run_dueling
+from collections import defaultdict
 import argparse
 import sys
 import pandas as pd
@@ -204,16 +205,8 @@ def inference(args):
 
     return 0
 
-
+"""
 def plot_cdf_from_state(state, model, num_bins=25):
-    """
-    Compute and plot the CDF of Q-values for a given state and model using relfreq.
-
-    Parameters:
-        state (torch.Tensor): The input state for which to calculate Q-values. Shape: [state_dim].
-        model (torch.nn.Module): The pretrained model (assumes it outputs Q-values).
-        num_bins (int): Number of bins to use for the relative frequency calculation.
-    """
     # Ensure the model is in evaluation mode and no gradients are calculated
     model.eval()
     with torch.no_grad():
@@ -221,7 +214,6 @@ def plot_cdf_from_state(state, model, num_bins=25):
         q_values = model(state.unsqueeze(0)).squeeze(0).cpu().numpy()
     
     # Calculate relative frequencies
-    # ![Relative freq calculation](https://stats.libretexts.org/Bookshelves/Introductory_Statistics/Inferential_Statistics_and_Probability_-_A_Holistic_Approach_(Geraghty)/02%3A_Displaying_and_Analyzing_Data_with_Graphs/2.05%3A_Graphs_of_Numeric_Data/2.5.05%3A_Cumulative_Frequency_and_Relative_Frequency)
     result = relfreq(q_values, numbins=num_bins)
     frequencies = result.frequency      # Relative frequencies for each bin
     lower_limit = result.lowerlimit     # Start of the first bin
@@ -246,6 +238,79 @@ def plot_cdf_from_state(state, model, num_bins=25):
     plt.show()
 
     return cdf, bin_edges
+"""
+
+def plot_cdf_from_state(model):
+    """
+    Compute and plot the CDF of Q-values for a given state and model using relfreq.
+
+    Parameters:
+        model (torch.nn.Module): The pretrained model (assumes it outputs Q-values).
+    """
+    model.eval()
+
+# Constants
+    malicious_chance = 30000000000
+    num_samples = 1000
+    num_epochs = 100
+    action_prbs = [2897, 965, 91]  # eMBB, Medium, URLLC
+    base_dl_rates = [6877, 6877, 6877]  # Base DL byte-to-PRB rates
+
+# To store total DL bytes
+    dl_byte_totals = defaultdict(int)
+
+# Simulate state data
+    for epoch in range(num_epochs):
+        dl_rates = base_dl_rates.copy()  # Reset rates each epoch
+        for _ in range(num_samples):
+            if random.randint(0, malicious_chance) == malicious_chance:
+                is_mal = True
+                dl_rates[random.randint(0, 2)] *= 10  # Temporarily modify a rate
+            
+            # Compute state
+            state = [dl_rates[0] * (action_prbs[0] + random.randint(-5, 5)),
+                        dl_rates[1] * (action_prbs[1] + random.randint(-5, 5)),
+                        dl_rates[2] * (action_prbs[2] + random.randint(-5, 5))]
+            
+            total_dl_bytes = np.sum(state)
+            dl_byte_totals[total_dl_bytes] += 1  # Count occurrences of total DL bytes
+
+            # Create tensor for model input
+            np_state = np.array(state, dtype=np.float32)
+            state_tensor = torch.from_numpy(np_state).unsqueeze(0).to(device)
+
+            selected_action = get_action(model, state_tensor)
+            if selected_action < 3:
+                action_prbs[selected_action] += 5
+            else:
+                action_prbs[selected_action - 3] = 0
+
+
+# Extract values and frequencies
+    total_dl_values = np.array(list(dl_byte_totals.keys()))
+    counts = np.array(list(dl_byte_totals.values()))
+
+# Compute frequencies and CDF
+    frequencies = counts / counts.sum()
+    cdf = np.cumsum(frequencies)
+
+# Sort for proper plotting
+    sorted_indices = np.argsort(total_dl_values)
+    total_dl_values = total_dl_values[sorted_indices]
+    #cdf = cdf[sorted_indices]
+
+# Plotting
+    plt.figure(figsize=(10, 6))
+    plt.plot(total_dl_values, cdf, label="CDF", color="blue", linewidth=2)
+    plt.scatter(total_dl_values, frequencies, label="Relative Frequencies", color="orange", alpha=0.7)
+    plt.xlabel("Total DL Bytes")
+    plt.ylabel("Cumulative Probability")
+    plt.title("CDF and Relative Frequencies of Total DL Bytes")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.6)
+    plt.show()
+
+    return cdf, total_dl_values
 
 def calc_cdf(args):
     state_size = 3
@@ -258,7 +323,7 @@ def calc_cdf(args):
         agent.eval()
 
         state = torch.rand(state_size) * 2 - 1
-        print(plot_cdf_from_state(state, agent))
+        print(plot_cdf_from_state(agent))
 
 
     if args.model_type == "DDQN":
@@ -269,7 +334,7 @@ def calc_cdf(args):
         agent.eval()
 
         state = torch.rand(state_size) * 2 - 1
-        print(plot_cdf_from_state(state, agent))
+        print(plot_cdf_from_state(agent))
 
     if args.model_type == "Dueling":
 
@@ -280,7 +345,7 @@ def calc_cdf(args):
 
 
         state = torch.rand(state_size) * 2 - 1
-        print(plot_cdf_from_state(state, agent))
+        print(plot_cdf_from_state(agent))
 
     return 0
 
