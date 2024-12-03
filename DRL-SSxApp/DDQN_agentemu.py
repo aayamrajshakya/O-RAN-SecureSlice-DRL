@@ -12,10 +12,10 @@
 # 1. **Initialize the Q-networks:**
 #    - Initialize the local Q-network with random weights. This network will be responsible for selecting actions.
 #    - Initialize the target Q-network with the same weights as the local Q-network. The target network is used to calculate the Q-value targets.
-   
+
 # 2. **For each episode:**
 #    - **Observe the current state** \(s\): Get the current state from the environment.
-   
+
 #    - **Select an action** \(a\) using an epsilon-greedy policy:
 #      - With probability \( \epsilon \), select a random action (exploration).
 #      - With probability \( 1 - \epsilon \), select the action that maximizes the Q-value from the local Q-network (exploitation).
@@ -59,22 +59,25 @@
 
 # This modification reduces the overestimation bias and makes the Q-value estimates more accurate, leading to improved performance in reinforcement learning tasks.
 
-
 # ## **Code**
 
 # ### **Imports**
-import torch
+
+# Standard library imports
+import os
+import random
 import signal
 import sys
+from collections import deque, namedtuple
+
+# Third-party imports
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import numpy as np
-import random
-import pandas as pd
-import matplotlib.pyplot as plt
-from collections import namedtuple, deque
-import os
 
 from common import get_state, perform_action
 
@@ -82,26 +85,6 @@ from common import get_state, perform_action
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
-
-
-# | Parameter             | Default Value | Description                                                                 | Try 1  |
-# |-----------------------|---------------|-----------------------------------------------------------------------------|--------| 
-# | `LR`                  | `3e-4`        | Learning Rate: Controls the step size during model weight updates.          | 
-# | `BATCH_SIZE`          | `128`         | num of experiences to sample from the replay buffer for each training batch.|
-# | `BUFFER_SIZE`         | `1e5`         | Size of the replay buffer that stores past experiences for learning.        |
-# | `UPDATE_EVERY`        | `8`           | Frequency of model parameter updates during training.                       |
-# | `TAU`                 | `1e-3`        | Soft update parameter for target network updates.                           |
-# | `EPISODE_MAX_TIMESTEP`| `300`         | Maximum number of timesteps per episode.                                    |
-# | `eps_start`           | `1.0`         | Initial value of epsilon for exploration vs. exploitation in action selectio|
-# | `eps_end`             | `0.01`        | Final value of epsilon after decay.                                         |
-# | `eps_decay`           | `0.995`       | Rate at which epsilon decays over time.                                     |
-# | `state_len`           | `8`           | Dimensionality of the state space.                                          |
-# | `action_len`          | `8`           | Dimensionality of the action space.                                         |
-# | `n_episodes`          | `1500`        | Number of episodes for training the agent.                                  |
-# | `max_t`               | `300`         | Maximum number of timesteps per episode.                                    |
-
-
-
 
 
 # ### **Hyperparameters and environment-specific constants**
@@ -112,16 +95,20 @@ UPDATE_EVERY = 4  # More frequent updates
 TAU = 5e-4  # Faster soft updatesng the target network. Determines how much of the local model's weights are copied to the target network.
 
 # Constants for PRB and DL Bytes mapping and thresholds
-PRB_INC_RATE = 6877         # Determines how many Physical Resource Blocks (PRB) to increase when adjusting PRB allocation.
+PRB_INC_RATE = 6877  # Determines how many Physical Resource Blocks (PRB) to increase when adjusting PRB allocation.
 # We expect 27,253,551
-DL_BYTES_THRESHOLD = [19922669, 6670690, 660192] # Thresholds for different slice types: Embb, Medium, Urllc.
+DL_BYTES_THRESHOLD = [
+    19922669,
+    6670690,
+    660192,
+]  # Thresholds for different slice types: Embb, Medium, Urllc.
 
 REWARD_PER_EPISODE = []  # List to store rewards for each episode
 EPISODE_MAX_TIMESTEP = 3  # Maximum number of timesteps per episodes
 
 
-        # Initialize a counter for unique episodes
-global unique_episode_counter
+# Initialize a counter for unique episodes
+unique_episode_counter = 0
 
 
 # ### **Q-Network**
@@ -135,7 +122,17 @@ class DDQN_QNetwork(nn.Module):
     Q-Network for approximating the Q-value function.
     The Q-network predicts Q-values for each action given a state.
     """
-    def __init__(self, state_len, action_len, seed, layer1_size=128, layer2_size=128, layer3_size=128, layer4_size=128):
+
+    def __init__(
+        self,
+        state_len,
+        action_len,
+        seed,
+        layer1_size=128,
+        layer2_size=128,
+        layer3_size=128,
+        layer4_size=128,
+    ):
         super(DDQN_QNetwork, self).__init__()
         self.seed = torch.manual_seed(seed)
 
@@ -154,9 +151,10 @@ class DDQN_QNetwork(nn.Module):
         x = F.relu(self.l4(x))
         return self.l5(x)
 
- # ### **Agent**
- # 
- # The Agent class represents an agent that interacts with an environment and learns from it using a Q-learning approach.
+
+# ### **Agent**
+#
+# The Agent class represents an agent that interacts with an environment and learns from it using a Q-learning approach.
 
 
 # __init__: Initializes the agent with state and action lengths, seed, and DDQN flag.
@@ -166,10 +164,11 @@ class DDQN_QNetwork(nn.Module):
 # soft_update: Updates the target Q-network by interpolating between local and target models.
 
 
-class DDQN():
+class DDQN:
     """
     Agent that interacts with the environment and learns from it using a Q-learning approach.
     """
+
     def __init__(self, state_len, action_len, seed, DDQN=True):
         self.action_len = action_len
         self.state_len = state_len
@@ -192,7 +191,7 @@ class DDQN():
             experiences = self.memory.sample()
             self.learn(experiences, 0.99)
 
-    def act(self, state, eps=0.):
+    def act(self, state, eps=0.0):
         # Choose an action using an epsilon-greedy policy
         state = torch.from_numpy(state).float().unsqueeze(0).to(device)
         self.qnetwork_local.eval()
@@ -228,10 +227,14 @@ class DDQN():
         # Perform soft update of the target model
         self.soft_update(self.qnetwork_local, self.qnetwork_target, TAU)
 
-
     def soft_update(self, local_model, target_model, tau):
-        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
-            target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
+        for target_param, local_param in zip(
+            target_model.parameters(), local_model.parameters()
+        ):
+            target_param.data.copy_(
+                tau * local_param.data + (1.0 - tau) * target_param.data
+            )
+
 
 # ### **Replay Buffer**
 # the DDQN_ReplayBuffer class is used to store and sample experiences, which are used in reinforcement learning to train an agent
@@ -241,15 +244,20 @@ class DDQN():
 # sample: Samples a batch of experiences from the buffer. It randomly selects batch_size number of experiences and converts them into torch tensors.
 # len: Returns the number of experiences in the buffer.
 
+
 class DDQN_ReplayBuffer:
     """
     Replay Buffer for storing and sampling experiences.
     """
+
     def __init__(self, action_size, buffer_size, batch_size):
         self.action_size = action_size
         self.memory = deque(maxlen=buffer_size)
         self.batch_size = batch_size
-        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
+        self.experience = namedtuple(
+            "Experience",
+            field_names=["state", "action", "reward", "next_state", "done"],
+        )
         self.seed = random.random()
 
     def add(self, state, action, reward, next_state, done):
@@ -261,16 +269,47 @@ class DDQN_ReplayBuffer:
         # Sample a batch of experiences from the buffer
         experiences = random.sample(self.memory, k=self.batch_size)
 
-        states = torch.from_numpy(np.vstack([e.state for e in experiences if e is not None])).float().to(device)
-        actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
-        rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
-        next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences if e is not None])).float().to(device)
-        dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(device)
+        states = (
+            torch.from_numpy(np.vstack([e.state for e in experiences if e is not None]))
+            .float()
+            .to(device)
+        )
+        actions = (
+            torch.from_numpy(
+                np.vstack([e.action for e in experiences if e is not None])
+            )
+            .long()
+            .to(device)
+        )
+        rewards = (
+            torch.from_numpy(
+                np.vstack([e.reward for e in experiences if e is not None])
+            )
+            .float()
+            .to(device)
+        )
+        next_states = (
+            torch.from_numpy(
+                np.vstack([e.next_state for e in experiences if e is not None])
+            )
+            .float()
+            .to(device)
+        )
+        dones = (
+            torch.from_numpy(
+                np.vstack([e.done for e in experiences if e is not None]).astype(
+                    np.uint8
+                )
+            )
+            .float()
+            .to(device)
+        )
 
         return (states, actions, rewards, next_states, dones)
 
     def __len__(self):
         return len(self.memory)
+
 
 # ### **Training Function**
 # This is a Deep Q-Network (DQN) training function in Python. It trains an agent to make decisions in an environment with the goal of maximizing a reward signal. The function takes in several parameters that control the training process, such as the number of episodes, maximum timesteps, and exploration rate.
@@ -286,7 +325,18 @@ class DDQN_ReplayBuffer:
 # The training process is repeated for a specified number of episodes.
 # The trained model is saved to a file.
 
-def run_ddqn(agent, n_episodes=1500, max_t=3, eps_start=1.0, eps_end=0.01, eps_decay=0.995, pth_file='checkpoints/DDQN_checkpoint.pth', malicious_chance=1000,malicious_chance_increase=0.0):
+
+def run_ddqn(
+    agent,
+    n_episodes=1500,
+    max_t=3,
+    eps_start=1.0,
+    eps_end=0.01,
+    eps_decay=0.995,
+    pth_file="checkpoints/DDQN_checkpoint.pth",
+    malicious_chance=1000,
+    malicious_chance_increase=0.0,
+):
     """
     Train the DQN agent with specified parameters and save checkpoints.
     """
@@ -294,14 +344,20 @@ def run_ddqn(agent, n_episodes=1500, max_t=3, eps_start=1.0, eps_end=0.01, eps_d
     unique_episode_counter = 0
 
     eps = eps_start  # Initialize epsilon (exploration rate)
-    df, df_file_len = create_df()  # Create the dataframes for each slice and get their lengths
+    df, df_file_len = (
+        create_df()
+    )  # Create the dataframes for each slice and get their lengths
 
-    actions = [] 
+    actions = []
     rewards = []
-    total_prbs = [[],[],[]]
-    dl_bytes = [[],[],[]]
-  #  action_prbs = [2897, 965, 96]
-    action_prbs = [2897, 965, 91]  # eMBB, Medium, URLL make the connection between this and 100 RB for 20 Mhz in LTE.
+    total_prbs = [[], [], []]
+    dl_bytes = [[], [], []]
+    #  action_prbs = [2897, 965, 96]
+    action_prbs = [
+        2897,
+        965,
+        91,
+    ]  # eMBB, Medium, URLL make the connection between this and 100 RB for 20 Mhz in LTE.
     total = 0
 
     total = 0
@@ -317,93 +373,95 @@ def run_ddqn(agent, n_episodes=1500, max_t=3, eps_start=1.0, eps_end=0.01, eps_d
         max_t = 0
         i = 1
         # assigned PRBs to each slice
-       # action_prbs = [2897, 965, 96]
+        # action_prbs = [2897, 965, 96]
         action_prbs = [2897, 965, 91]  # eMBB, Medium, URLLC
 
         global DL_BYTE_TO_PRB_RATES
         # number of DL bytes that each slice increases by per PRB
         DL_BYTE_TO_PRB_RATES = [6877, 6877, 6877]
 
-    
-        next_state = get_state(action_prbs, DL_BYTE_TO_PRB_RATES, malicious_chance)  # Get the initial state from the dataframes
+        next_state = get_state(
+            action_prbs, DL_BYTE_TO_PRB_RATES, malicious_chance
+        )  # Get the initial state from the dataframes
         while not done and max_t < EPISODE_MAX_TIMESTEP:
             total += 1
             state = next_state
-            action = agent.act(np.array(state), eps)  # Choose an action based on the current state
+            action = agent.act(
+                np.array(state), eps
+            )  # Choose an action based on the current state
             action_count[action] += 1
 
             for i, prb_value in enumerate(total_prbs):
                 total_prbs[i].append(prb_value)
                 dl_bytes[i].append(state[i])
 
-            reward, done, action_prbs = perform_action(action, state, i, action_prbs, DL_BYTES_THRESHOLD)
+            reward, done, action_prbs = perform_action(
+                action, state, i, action_prbs, DL_BYTES_THRESHOLD
+            )
             actions.append(action)
             rewards.append(reward)
             if reward > 0:
                 correct += 1
             malicious_chance += malicious_chance_increase
-            next_state = get_state(action_prbs, DL_BYTE_TO_PRB_RATES, malicious_chance)  # Get the initial state from the dataframes
-            agent.step(state, action, reward, next_state, done)  # Update the agent with the experience
+            next_state = get_state(
+                action_prbs, DL_BYTE_TO_PRB_RATES, malicious_chance
+            )  # Get the initial state from the dataframes
+            agent.step(
+                state, action, reward, next_state, done
+            )  # Update the agent with the experience
 
             # Update the score with the reward
             max_t += 1  # Increment the timestep
             i += 1  # Increment the step counter
 
-        if episode % 10 == 0:  # Decay epsilon every 500 episodes
+        if episode % 400 == 0:  # Decay epsilon every 500 episodes
             eps = max(eps_end, eps_decay * eps)
-            
+
         # Store the score and actions
         actions.append(temp)
 
-
         # Update the state lists with the current state
 
-
-
-
-
-            # Increment the unique episode counter
+        # Increment the unique episode counter
         unique_episode_counter += 1
 
-            # Check if 100 unique episodes have been processed
+        # Check if 100 unique episodes have been processed
         if unique_episode_counter >= 1000:
             avg_reward = sum(rewards[-1000:]) / 1000  # Average of the last 100 rewards
 
-            print(f'\rEpisode {episode}\tAverage Score: {avg_reward:.2f}', end="")
+            print(f"\rEpisode {episode}\tAverage Score: {avg_reward:.2f}", end="")
             reward_averages.append(avg_reward)
             percentages.append(correct / total)
 
-                # Reset the unique episode counter
+            # Reset the unique episode counter
             unique_episode_counter = 0
         if episode % 350000 == 0:
-            print(f'\rEpisode {episode}\treward: {avg_reward}')
+            print(f"\rEpisode {episode}\treward: {avg_reward}")
             print("Percentage: ", correct / total)
             fig, ax = plt.subplots(1, 3, figsize=(10, 5))
 
-            ax[0].plot(reward_averages, 'r')
-            ax[0].set_title('Reward')
+            ax[0].plot(reward_averages, "r")
+            ax[0].set_title("Reward")
 
-            ax[1].plot(percentages, color='g')
-            ax[1].set_title('Percentages')
+            ax[1].plot(percentages, color="g")
+            ax[1].set_title("Percentages")
 
-            ax[2].bar(range(len(action_count)), action_count, color='b')
-            ax[2].set_title('Actions taken')
+            ax[2].bar(range(len(action_count)), action_count, color="b")
+            ax[2].set_title("Actions taken")
 
             action_count = [0 for x in range(4)]
 
             plt.show()
 
-
     # Save the model checkpoint
     torch.save(agent.qnetwork_local.state_dict(), pth_file)
-    print(f'Model saved to {pth_file}')
+    print(f"Model saved to {pth_file}")
 
     return rewards, (correct, total)
-                
 
-            
 
 # ### **Create Data Frames**
+
 
 # This code reads CSV files from three directories (Embb, Medium, Urllc) into lists of Pandas data frames, calculates the number of data frames and their lengths, and returns the data frames and their lengths.
 def create_df():  # Creates a data frame for each slice
@@ -411,16 +469,25 @@ def create_df():  # Creates a data frame for each slice
     Creates data frames for each slice type (eMBB, Medium, UrLLC) by reading in csv files from the respective directories.
     Returns a list of data frames and their corresponding lengths.
     """
-    encoding = 'utf-8'
+    encoding = "utf-8"
     # List CSV files from the specified directories for each slice type
-    embbFiles = os.listdir('Slicing_UE_Data/Embb/')
-    mediumFiles = os.listdir('Slicing_UE_Data/Medium/')
-    urllcFiles = os.listdir('Slicing_UE_Data/Urllc/')
+    embbFiles = os.listdir("Slicing_UE_Data/Embb/")
+    mediumFiles = os.listdir("Slicing_UE_Data/Medium/")
+    urllcFiles = os.listdir("Slicing_UE_Data/Urllc/")
 
-     # Read each CSV file into a list of data frames for each slice type
-    dfEmbb = [pd.read_csv(f'Slicing_UE_Data/Embb/{file}', encoding=encoding) for file in embbFiles]
-    dfMedium = [pd.read_csv(f'Slicing_UE_Data/Medium/{file}', encoding=encoding) for file in mediumFiles]
-    dfUrllc = [pd.read_csv(f'Slicing_UE_Data/Urllc/{file}', encoding=encoding) for file in urllcFiles]
+    # Read each CSV file into a list of data frames for each slice type
+    dfEmbb = [
+        pd.read_csv(f"Slicing_UE_Data/Embb/{file}", encoding=encoding)
+        for file in embbFiles
+    ]
+    dfMedium = [
+        pd.read_csv(f"Slicing_UE_Data/Medium/{file}", encoding=encoding)
+        for file in mediumFiles
+    ]
+    dfUrllc = [
+        pd.read_csv(f"Slicing_UE_Data/Urllc/{file}", encoding=encoding)
+        for file in urllcFiles
+    ]
 
     # Define global variables to store the size of data frames
     global EMBB_DF_SIZE
@@ -443,5 +510,3 @@ def create_df():  # Creates a data frame for each slice
 
     # Return the data frames and their lengths
     return (df, dfFileLen)
-
-
