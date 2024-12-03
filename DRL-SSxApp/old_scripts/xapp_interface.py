@@ -5,8 +5,9 @@ import time
 import subprocess
 import re
 
-SERVER_HOST = '127.0.0.1'
+SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 3000
+
 
 class KpmInterface:
 
@@ -26,7 +27,7 @@ class KpmInterface:
                 while True:
                     time.sleep(0.1),
                     data = s.recv(1024)
-                    if not data or data == b'':
+                    if not data or data == b"":
                         break
                     else:
                         print(data)
@@ -34,7 +35,7 @@ class KpmInterface:
                         response_message = "KPM recieved"
                         s.sendall(response_message.encode())
                 s.close()
-        
+
         print(recieved_data, time.time() - start)
         return recieved_data
 
@@ -45,12 +46,13 @@ class ConfInterface:
         self.ues = []
         self.slices = []
         command = "sudo kubectl get svc -n ricxapp --field-selector metadata.name=service-ricxapp-drl-ss-rmr -o jsonpath='{.items[0].spec.clusterIP}'"
-        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = subprocess.run(
+            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
         if result.stderr:
             raise ValueError(f"Error occured with kubectl: {result.stderr}")
-        self.xapp = result.stdout.decode('utf-8')
+        self.xapp = result.stdout.decode("utf-8")
         print("xapp: ", self.xapp)
-
 
     def get_slice(self, item):
         response = requests.get(f"http://{self.xapp}:8000/v1/slices/{item}")
@@ -66,24 +68,23 @@ class ConfInterface:
             return None
         else:
             return response.json()
-       
+
     def get_ues(self):
         response = requests.get(f"http://{self.xapp}:8000/v1/ues")
         if response.status_code != 200:
             return None
         else:
             return response.json()
-     
+
     def create_slice(prbs, slice_name):
         headers = {"Content-type": "application/json"}
         payload = {
             "name": slice_name,
-            "allocation_policy": {
-                "type": "proportional",
-                "share": prbs
-            }
+            "allocation_policy": {"type": "proportional", "share": prbs},
         }
-        response = requests.post(f"http://{self.xapp}:8000/v1/slices", headers=headers, json=payload)
+        response = requests.post(
+            f"http://{self.xapp}:8000/v1/slices", headers=headers, json=payload
+        )
 
         if response.status_code != 200:
             return False
@@ -91,46 +92,59 @@ class ConfInterface:
             return True
 
     def bind_slice_to_eNB(self, nodeb, slice_name):
-        response = requests.post(f"http://{self.xapp}:8000/v1/nodebs/{nodeb}/slices/{slice_name}")
+        response = requests.post(
+            f"http://{self.xapp}:8000/v1/nodebs/{nodeb}/slices/{slice_name}"
+        )
         if response.status == 200:
             return True
         else:
             return False
-    
+
     def create_ue(self, imsi):
         headers = {"Content-type": "application/json"}
-        payload = { "imsi": imsi }
-        response = requests.post(f"http://{self.xapp}:8000/v1/ues", headers=headers, json=payload)
+        payload = {"imsi": imsi}
+        response = requests.post(
+            f"http://{self.xapp}:8000/v1/ues", headers=headers, json=payload
+        )
         if response.status == 200:
             return True
         else:
             return False
 
     def bind_ue_to_slice(self, imsi, slice_name):
-        response = requests.post(f"http://{self.xapp}:8000/v1/slices/{slice_name}/ues/{imsi}")
+        response = requests.post(
+            f"http://{self.xapp}:8000/v1/slices/{slice_name}/ues/{imsi}"
+        )
         if response.status_code == 200:
             return True
         else:
             return False
 
     def unbind_ue(self, imsi, slice_name):
-        response = requests.delete(f"http://{self.xapp}:8000/v1/slices/{slice_name}/ues/{imsi}")
+        response = requests.delete(
+            f"http://{self.xapp}:8000/v1/slices/{slice_name}/ues/{imsi}"
+        )
 
         if response.status_code == 200:
             return True
         print(response.text)
         return False
 
-
     def reallocate_prbs(self, prbs, slice_name):
-       headers = {"Content-type": "application/json"}
-       payload = { "name": slice_name, "allocation_policy": { "type": "proportional", "share": str(prbs) } }
-       response = requests.put(f"http://{self.xapp}:8000/v1/slices", headers=headers, json=payload)
+        headers = {"Content-type": "application/json"}
+        payload = {
+            "name": slice_name,
+            "allocation_policy": {"type": "proportional", "share": str(prbs)},
+        }
+        response = requests.put(
+            f"http://{self.xapp}:8000/v1/slices", headers=headers, json=payload
+        )
 
-       if response.status_code != 200:
-           return False
-       else:
-           return True
+        if response.status_code != 200:
+            return False
+        else:
+            return True
+
 
 class IperfInterface:
 
@@ -140,26 +154,18 @@ class IperfInterface:
         self.pattern = re.compile(r"[0-9]*\.[0-9]+ MB", re.IGNORECASE)
         self.namespcaces = namespaces
         for namespace in self.namespcaces:
-            namespace_to_port = {
-                "ue1":"5006",
-                "ue2":"5020",
-                "ue3":"5030"
-            }
+            namespace_to_port = {"ue1": "5006", "ue2": "5020", "ue3": "5030"}
 
-            namespace_to_bandwidth = {
-                "ue1":"10M",
-                "ue2":"10M",
-                "ue3":"50M"
-            }
+            namespace_to_bandwidth = {"ue1": "10M", "ue2": "10M", "ue3": "50M"}
 
             command = [
                 "sudo",
                 "ip",
-                "netns", 
+                "netns",
                 "exec",
                 namespace,
                 "iperf3",
-                "-c", 
+                "-c",
                 "172.16.0.1",
                 "-p",
                 namespace_to_port[namespace],
@@ -169,7 +175,7 @@ class IperfInterface:
                 "1",
                 "-R",
                 "-b",
-                namespace_to_bandwidth[namespace]
+                namespace_to_bandwidth[namespace],
             ]
             self.commands[namespace] = command
 
@@ -180,7 +186,7 @@ class IperfInterface:
             if self.processes[namespace].stderr:
                 print(self.processes[namespace].stderr)
             for line in self.processes[namespace].stdout:
-                reading = self.pattern.search(line.decode('utf-8').strip())
+                reading = self.pattern.search(line.decode("utf-8").strip())
                 if reading:
                     break
         return float(reading.group().split(" ")[0])
@@ -190,11 +196,10 @@ class IperfInterface:
             if namespace in self.processes.keys():
                 self.processes[namespace].terminate()
                 self.processes[namespace].wait()
-            new_process = subprocess.Popen(self.commands[namespace], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            new_process = subprocess.Popen(
+                self.commands[namespace], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
             self.processes[namespace] = new_process
-
-
-    
 
 
 if __name__ == "__main__":
