@@ -1,0 +1,56 @@
+% MATLAB Script: Plotting Total DL Values, CDF, and Frequencies
+
+% Read the CSV file
+data = readtable('Dueling_mal_50_percent.csv'); % Replace with your actual file name
+data1 = readtable('ddqn_mal_50_percent.csv');
+data2 = readtable('dqn_mal_50_percent.csv');
+
+
+% Extract the relevant columns
+totalDLValues = data.Total_DL_Values;
+cdfValues = data.CDF;
+%frequencies = data.Frequencies;
+
+% Extract the relevant columns
+totalDLValues = data1.Total_DL_Values;
+cdfValues = data1.CDF;
+%frequencies = data.Frequencies;
+
+% Extract the relevant columns
+totalDLValues = data2.Total_DL_Values;
+cdfValues = data2.CDF;
+%frequencies = data.Frequencies;
+
+
+% Create the plot
+figure('Position', [100, 100, 1000, 600]);
+
+% Plot the CDF
+plot(totalDLValues, cdfValues, 'y-', 'LineWidth', 2);
+hold on;
+
+% Plot the CDF
+plot(totalDLValues, cdfValues, 'b-', 'LineWidth', 2);
+hold on;
+
+% Plot the CDF
+plot(totalDLValues, cdfValues, 'r-', 'LineWidth', 2);
+hold on;
+
+% Plot the Frequencies
+%yyaxis right; % Use a secondary y-axis for frequencies
+%plot(totalDLValues, frequencies, 'r--', 'LineWidth', 2);
+
+% Customize the axes and labels
+xlabel('Total DL Bytes');
+yyaxis left;
+ylabel('Cumulative Probability (CDF) with 50% malicious chance');
+%yyaxis right;
+%ylabel('Relative Frequencies');
+%title('CDF and Frequencies of Total DL Bytes');
+legend({'CDF'}, 'Location', 'best');
+
+% Add grid
+grid on;
+
+disp('Plot generated successfully.');
